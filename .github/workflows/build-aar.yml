@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "StickerGo_V4.6.3_BETA2_ANDROID_BUILD.zip"
+      - "StickerGo_V4.6.3_BETA2_ANDROID_BUILD_FIXED.zip"
       - ".github/workflows/build-aar.yml"
 
 jobs:
@@ -17,22 +17,26 @@ jobs:
 
       - name: Extract StickerGo project
         run: |
-          unzip -q StickerGo_V4.6.3_BETA2_ANDROID_BUILD.zip -d stickergo
+          unzip -q StickerGo_V4.6.3_BETA2_ANDROID_BUILD_FIXED.zip -d stickergo
+          echo "=== Project files ==="
           find stickergo -maxdepth 5 -type f | head -100
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
       - name: Build Android AAR
         working-directory: stickergo/android/plugin
         run: |
           chmod +x gradlew || true
+
           if [ -f gradlew ]; then
             ./gradlew :plugin:assembleRelease
           else
@@ -41,6 +45,7 @@ jobs:
 
       - name: Find generated AAR
         run: |
+          echo "=== Generated AAR files ==="
           find stickergo -type f -name "*.aar" -print
 
       - name: Upload AAR

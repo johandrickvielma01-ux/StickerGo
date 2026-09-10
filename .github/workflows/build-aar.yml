@@ -1,0 +1,51 @@
+name: Build StickerGo Android Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "StickerGo_V4.6.3_BETA2_ANDROID_BUILD.zip"
+      - ".github/workflows/build-aar.yml"
+
+jobs:
+  build-aar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download project ZIP
+        uses: actions/checkout@v4
+
+      - name: Extract StickerGo project
+        run: |
+          unzip -q StickerGo_V4.6.3_BETA2_ANDROID_BUILD.zip -d stickergo
+          find stickergo -maxdepth 5 -type f | head -100
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Android AAR
+        working-directory: stickergo/android/plugin
+        run: |
+          chmod +x gradlew || true
+          if [ -f gradlew ]; then
+            ./gradlew :plugin:assembleRelease
+          else
+            gradle :plugin:assembleRelease
+          fi
+
+      - name: Find generated AAR
+        run: |
+          find stickergo -type f -name "*.aar" -print
+
+      - name: Upload AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: StickerGoTikTok-AAR
+          path: |
+            stickergo/android/plugin/plugin/build/outputs/aar/*.aar

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "StickerGo_V4.6.3_BETA2_ANDROID_BUILD_FIXED.zip"
+      - "StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v2_AAR_READY.zip"
       - ".github/workflows/build-aar.yml"
 
 jobs:
@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download project ZIP
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Extract StickerGo project
         run: |
-          unzip -q StickerGo_V4.6.3_BETA2_ANDROID_BUILD_FIXED.zip -d stickergo
+          unzip -q StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v2_AAR_READY.zip -d stickergo
           echo "=== Project files ==="
           find stickergo -maxdepth 5 -type f | head -100
 
@@ -27,10 +27,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.11.1"
 
       - name: Build Android AAR
         working-directory: stickergo/android/plugin
@@ -43,14 +43,18 @@ jobs:
             gradle :plugin:assembleRelease
           fi
 
-      - name: Find generated AAR
+      - name: Find generated AAR files
         run: |
           echo "=== Generated AAR files ==="
           find stickergo -type f -name "*.aar" -print
+
+      - name: Verify AAR exists
+        run: |
+          find stickergo -type f -name "*.aar" | grep -q "StickerGoTikTok-release.aar"
 
       - name: Upload AAR
         uses: actions/upload-artifact@v4
         with:
           name: StickerGoTikTok-AAR
           path: |
-            stickergo/android/plugin/plugin/build/outputs/aar/*.aar
+            stickergo/**/StickerGoTikTok-release.aar

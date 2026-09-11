@@ -4,57 +4,133 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v2_AAR_READY.zip"
+      - "StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v3.zip"
       - ".github/workflows/build-aar.yml"
 
 jobs:
   build-aar:
+    name: Build Android AAR
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Descargar el repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract StickerGo project
+      # 2. Comprobar que estamos usando EXACTAMENTE V3
+      - name: Check V3 ZIP
         run: |
-          unzip -q StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v2_AAR_READY.zip -d stickergo
-          echo "=== Project files ==="
-          find stickergo -maxdepth 5 -type f | head -100
+          echo "=== ZIP que vamos a utilizar ==="
+          ls -lh StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v3.zip
 
+      # 3. Extraer SOLO el ZIP V3
+      - name: Extract StickerGo V3
+        run: |
+          rm -rf stickergo
+          mkdir -p stickergo
+
+          unzip -q \
+            StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v3.zip \
+            -d stickergo
+
+          echo "=== Archivos del proyecto ==="
+          find stickergo/android/plugin -maxdepth 4 -type f | sort | head -150
+
+      # 4. Verificar que el Kotlin CORREGIDO está dentro del ZIP
+      - name: Verify corrected Kotlin source
+        run: |
+          FILE=$(find stickergo/android/plugin -name "StickerGoTikTokPlugin.kt" | head -1)
+
+          echo "Kotlin encontrado en:"
+          echo "$FILE"
+
+          echo "=== Comprobando AuthRequest ==="
+          grep -n "com.tiktok.open.sdk.auth.AuthRequest" "$FILE"
+
+          echo "=== Comprobando que NO existe auth.model ==="
+          if grep -q "auth.model.AuthRequest" "$FILE"; then
+            echo "ERROR: todavía existe el import antiguo auth.model.AuthRequest"
+            exit 1
+          fi
+
+          echo "=== Comprobando que NO existe onMainNewIntent ==="
+          if grep -q "onMainNewIntent" "$FILE"; then
+            echo "ERROR: todavía existe onMainNewIntent"
+            exit 1
+          fi
+
+          echo "=== Comprobando que NO existe authMsg ==="
+          if grep -q "authMsg" "$FILE"; then
+            echo "ERROR: todavía existe authMsg"
+            exit 1
+          fi
+
+          echo "================================"
+          echo "KOTLIN V3 CORRECTO"
+          echo "================================"
+
+      # 5. Java 17
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
+      # 6. Gradle 8.11.1
       - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
-      - name: Build Android AAR
+      # 7. Verificar AndroidX
+      - name: Verify AndroidX
         working-directory: stickergo/android/plugin
         run: |
-          chmod +x gradlew || true
+          echo "=== gradle.properties ==="
+          cat gradle.properties
 
-          if [ -f gradlew ]; then
-            ./gradlew :plugin:assembleRelease
-          else
-            gradle :plugin:assembleRelease
-          fi
+          grep -q "android.useAndroidX=true" gradle.properties
+          grep -q "android.enableJetifier=true" gradle.properties
 
-      - name: Find generated AAR files
+          echo "AndroidX OK"
+
+      # 8. Compilar el AAR
+      - name: Build StickerGoTikTok AAR
+        working-directory: stickergo/android/plugin
         run: |
-          echo "=== Generated AAR files ==="
+          gradle --version
+
+          echo "=== Iniciando compilación ==="
+          gradle :plugin:assembleRelease --stacktrace --no-daemon
+
+      # 9. Buscar el AAR generado
+      - name: Find generated AAR
+        run: |
+          echo "=== AAR GENERADOS ==="
           find stickergo -type f -name "*.aar" -print
 
-      - name: Verify AAR exists
+      # 10. Comprobar que existe el AAR correcto
+      - name: Verify release AAR
         run: |
-          find stickergo -type f -name "*.aar" | grep -q "StickerGoTikTok-release.aar"
+          AAR=$(find stickergo -type f -name "StickerGoTikTok-release.aar" | head -1)
 
-      - name: Upload AAR
+          if [ -z "$AAR" ]; then
+            echo "ERROR: No se encontró StickerGoTikTok-release.aar"
+            exit 1
+          fi
+
+          echo "========================================"
+          echo "AAR ENCONTRADO:"
+          echo "$AAR"
+          echo "========================================"
+
+          ls -lh "$AAR"
+
+      # 11. Subir el AAR como Artifact
+      - name: Upload StickerGoTikTok AAR
         uses: actions/upload-artifact@v4
         with:
           name: StickerGoTikTok-AAR
           path: |
             stickergo/**/StickerGoTikTok-release.aar
+          if-no-files-found: error

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v3.zip"
+      - "StickerGo_V4_6_4_BETA_SOURCE.zip"
       - ".github/workflows/build-aar.yml"
 
 jobs:
@@ -13,93 +13,147 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check V3 ZIP
+      - name: Find V4.6.4 source ZIP
+        id: project
+        shell: bash
         run: |
-          echo "=== ZIP seleccionado ==="
-          ls -lh StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v3.zip
+          set -e
 
-      - name: Extract StickerGo V3
+          ZIP=$(find . -maxdepth 2 -type f \
+            -name 'StickerGo_V4_6_4_BETA_SOURCE.zip' \
+            | head -1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: StickerGo_V4_6_4_BETA_SOURCE.zip no encontrado."
+            exit 1
+          fi
+
+          echo "ZIP encontrado:"
+          echo "$ZIP"
+
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Extract StickerGo V4.6.4
+        shell: bash
         run: |
+          set -e
+
           rm -rf stickergo
           mkdir -p stickergo
 
-          unzip -q \
-            StickerGo_V4_6_3_BETA2_ANDROID_BUILD_FIXED_v3.zip \
-            -d stickergo
+          unzip -q "${{ steps.project.outputs.zip }}" -d stickergo
 
-          echo "=== Proyecto extraído ==="
-          find stickergo/android/plugin -maxdepth 5 -type f | sort | head -200
+          echo "================================"
+          echo "PROYECTO STICKERGO EXTRAÍDO"
+          echo "================================"
 
-      - name: Verify corrected Kotlin source
+          echo "Contenido Android:"
+          find stickergo/android/plugin -maxdepth 4 -type f | sort | head -100
+
+      - name: Verify Kotlin source
+        shell: bash
         run: |
-          FILE=$(find stickergo/android/plugin \
-            -name "StickerGoTikTokPlugin.kt" | head -1)
+          set -e
 
-          echo "========================================"
-          echo "Kotlin encontrado:"
-          echo "$FILE"
-          echo "========================================"
+          FILE="stickergo/android/plugin/plugin/src/main/java/com/stickergo/tiktok/StickerGoTikTokPlugin.kt"
 
-          echo ""
-          echo "=== Verificando import AuthRequest ==="
-
-          grep -q \
-            "import com.tiktok.open.sdk.auth.AuthRequest" \
-            "$FILE"
-
-          echo "OK: AuthRequest correcto"
-
-          echo ""
-          echo "=== Verificando import antiguo auth.model ==="
-
-          if grep -q \
-            "import com.tiktok.open.sdk.auth.model.AuthRequest" \
-            "$FILE"; then
-
-            echo "ERROR: todavía existe auth.model.AuthRequest"
+          if [ ! -f "$FILE" ]; then
+            echo "ERROR: No se encontró StickerGoTikTokPlugin.kt"
             exit 1
           fi
 
-          echo "OK: no existe auth.model.AuthRequest"
+          echo "================================"
+          echo "VERIFICANDO PLUGIN V4.6.4"
+          echo "================================"
 
-          echo ""
-          echo "=== Verificando onMainNewIntent ==="
+          echo "--- onMainResume ---"
+          grep -n "onMainResume" "$FILE" || {
+            echo "ERROR: onMainResume no encontrado."
+            exit 1
+          }
 
-          if grep -q \
-            "onMainNewIntent" \
-            "$FILE"; then
+          echo "--- callback ---"
+          grep -n "ACTION_VIEW" "$FILE" || {
+            echo "ERROR: ACTION_VIEW no encontrado."
+            exit 1
+          }
 
-            echo "ERROR: todavía existe onMainNewIntent"
+          echo "--- redirect URI ---"
+          grep -n "johandrickvielma01-ux.github.io/tiktok/callback" "$FILE" \
+            || true
+
+          echo "--- primeros 120 caracteres del archivo ---"
+          head -120 "$FILE"
+
+      - name: Verify TikTok imports
+        shell: bash
+        run: |
+          set -e
+
+          FILE="stickergo/android/plugin/plugin/src/main/java/com/stickergo/tiktok/StickerGoTikTokPlugin.kt"
+
+          echo "Verificando AuthRequest..."
+
+          grep -q 'import com.tiktok.open.sdk.auth.AuthRequest' "$FILE" \
+            || {
+              echo "ERROR: AuthRequest incorrecto o faltante."
+              exit 1
+            }
+
+          echo "OK: AuthRequest correcto."
+
+          if grep -q 'import com.tiktok.open.sdk.auth.model.AuthRequest' "$FILE"; then
+            echo "ERROR: todavía existe el import antiguo auth.model.AuthRequest"
             exit 1
           fi
 
-          echo "OK: no existe onMainNewIntent"
+          echo "OK: no existe el import antiguo."
 
-          echo ""
-          echo "=== Verificando authMsg REAL ==="
+      - name: Verify no unsupported onMainNewIntent
+        shell: bash
+        run: |
+          set -e
 
-          # Solo buscamos el uso real de response.authMsg.
-          # No buscamos la palabra general porque puede aparecer
-          # dentro de comentarios.
+          FILE="stickergo/android/plugin/plugin/src/main/java/com/stickergo/tiktok/StickerGoTikTokPlugin.kt"
 
-          if grep -q \
-            "response\.authMsg" \
-            "$FILE"; then
-
-            echo "ERROR: todavía existe response.authMsg"
+          if grep -q 'onMainNewIntent' "$FILE"; then
+            echo "ERROR: onMainNewIntent todavía existe."
             exit 1
           fi
 
-          echo "OK: no existe response.authMsg"
+          echo "OK: no existe onMainNewIntent."
 
-          echo ""
-          echo "========================================"
-          echo "KOTLIN V3 VALIDADO CORRECTAMENTE"
-          echo "========================================"
+      - name: Verify callback processing
+        shell: bash
+        run: |
+          set -e
+
+          FILE="stickergo/android/plugin/plugin/src/main/java/com/stickergo/tiktok/StickerGoTikTokPlugin.kt"
+
+          echo "Buscando procesamiento del callback..."
+
+          grep -q 'Intent.ACTION_VIEW' "$FILE" \
+            || {
+              echo "ERROR: no se encontró Intent.ACTION_VIEW."
+              exit 1
+            }
+
+          grep -q 'getAuthResponseFromIntent' "$FILE" \
+            || {
+              echo "ERROR: no se encontró getAuthResponseFromIntent."
+              exit 1
+            }
+
+          grep -q 'onMainResume' "$FILE" \
+            || {
+              echo "ERROR: no se encontró onMainResume."
+              exit 1
+            }
+
+          echo "OK: callback preparado."
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -114,67 +168,144 @@ jobs:
 
       - name: Verify AndroidX
         working-directory: stickergo/android/plugin
+        shell: bash
         run: |
-          echo "=== gradle.properties ==="
-          cat gradle.properties
+          set -e
 
-          grep -q "android.useAndroidX=true" gradle.properties
-          grep -q "android.enableJetifier=true" gradle.properties
+          echo "================================"
+          echo "VERIFICANDO ANDROIDX"
+          echo "================================"
 
-          echo ""
-          echo "AndroidX OK"
+          grep -q 'android.useAndroidX=true' gradle.properties \
+            || {
+              echo "ERROR: android.useAndroidX=true no encontrado."
+              exit 1
+            }
 
-      - name: Build StickerGoTikTok AAR
+          grep -q 'android.enableJetifier=true' gradle.properties \
+            || {
+              echo "ERROR: android.enableJetifier=true no encontrado."
+              exit 1
+            }
+
+          echo "AndroidX OK."
+
+      - name: Build release and debug AAR
         working-directory: stickergo/android/plugin
+        shell: bash
         run: |
-          echo "=== Gradle version ==="
+          set -e
+
+          echo "================================"
+          echo "COMPILANDO STICKERGO V4.6.4"
+          echo "================================"
+
           gradle --version
 
-          echo ""
-          echo "========================================"
-          echo "COMPILANDO StickerGoTikTok-release.aar"
-          echo "========================================"
-
-          gradle :plugin:assembleRelease \
+          gradle \
+            :plugin:assembleRelease \
+            :plugin:assembleDebug \
             --stacktrace \
             --no-daemon
 
-      - name: Find generated AAR
+      - name: Verify generated AARs
+        shell: bash
         run: |
-          echo "========================================"
-          echo "AAR GENERADOS"
-          echo "========================================"
+          set -e
 
-          find stickergo \
-            -type f \
-            -name "*.aar" \
-            -print
+          RELEASE="stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-release.aar"
+          DEBUG="stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-debug.aar"
 
-      - name: Verify release AAR
-        run: |
-          AAR=$(find stickergo \
-            -type f \
-            -name "StickerGoTikTok-release.aar" | head -1)
+          echo "================================"
+          echo "VERIFICANDO AAR"
+          echo "================================"
 
-          if [ -z "$AAR" ]; then
-            echo ""
-            echo "ERROR: No se encontró StickerGoTikTok-release.aar"
+          if [ ! -f "$RELEASE" ]; then
+            echo "ERROR: release AAR no encontrado."
             exit 1
           fi
 
-          echo ""
-          echo "========================================"
-          echo "🔥 AAR ENCONTRADO 🔥"
-          echo "========================================"
-          echo "$AAR"
-          echo ""
+          if [ ! -f "$DEBUG" ]; then
+            echo "ERROR: debug AAR no encontrado."
+            exit 1
+          fi
 
-          ls -lh "$AAR"
+          echo "Release AAR:"
+          ls -lh "$RELEASE"
 
-      - name: Upload StickerGoTikTok AAR
+          echo "Debug AAR:"
+          ls -lh "$DEBUG"
+
+      - name: Copy fresh AARs into Godot project
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p stickergo/addons/StickerGoTikTok/bin/release
+          mkdir -p stickergo/addons/StickerGoTikTok/bin/debug
+
+          cp \
+            stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-release.aar \
+            stickergo/addons/StickerGoTikTok/bin/release/StickerGoTikTok-release.aar
+
+          cp \
+            stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-debug.aar \
+            stickergo/addons/StickerGoTikTok/bin/debug/StickerGoTikTok-debug.aar
+
+          echo "================================"
+          echo "AAR ACTUALIZADOS EN GODOT"
+          echo "================================"
+
+          ls -lh stickergo/addons/StickerGoTikTok/bin/release/
+          ls -lh stickergo/addons/StickerGoTikTok/bin/debug/
+
+      - name: Verify AAR contains plugin classes
+        shell: bash
+        run: |
+          set -e
+
+          RELEASE="stickergo/addons/StickerGoTikTok/bin/release/StickerGoTikTok-release.aar"
+
+          echo "Buscando clases del plugin..."
+
+          unzip -l "$RELEASE" | grep \
+            'StickerGoTikTokPlugin.class' \
+            || {
+              echo "ERROR: StickerGoTikTokPlugin.class no está dentro del AAR."
+              exit 1
+            }
+
+          echo "OK: plugin encontrado dentro del AAR."
+
+      - name: Package ready-to-export project
+        shell: bash
+        run: |
+          set -e
+
+          cd stickergo
+
+          zip -qr ../StickerGo_V4_6_4_BETA_READY.zip .
+
+          cd ..
+
+          echo "================================"
+          echo "PROYECTO FINAL GENERADO"
+          echo "================================"
+
+          ls -lh StickerGo_V4_6_4_BETA_READY.zip
+
+      - name: Upload AARs
         uses: actions/upload-artifact@v4
         with:
-          name: StickerGoTikTok-AAR
+          name: StickerGoTikTok-AAR-V4.6.4
           path: |
-            stickergo/**/StickerGoTikTok-release.aar
+            stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-release.aar
+            stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-debug.aar
+          if-no-files-found: error
+
+      - name: Upload ready-to-export Godot project
+        uses: actions/upload-artifact@v4
+        with:
+          name: StickerGo-V4.6.4-BETA-READY
+          path: StickerGo_V4_6_4_BETA_READY.zip
           if-no-files-found: error

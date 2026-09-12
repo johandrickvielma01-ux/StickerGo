@@ -50,8 +50,7 @@ jobs:
           echo "PROYECTO STICKERGO EXTRAÍDO"
           echo "================================"
 
-          echo "Contenido Android:"
-          find stickergo/android/plugin -maxdepth 4 -type f | sort | head -100
+          find stickergo/android/plugin -maxdepth 5 -type f | sort | head -100
 
       - name: Verify Kotlin source
         shell: bash
@@ -75,18 +74,16 @@ jobs:
             exit 1
           }
 
-          echo "--- callback ---"
+          echo "--- ACTION_VIEW ---"
           grep -n "ACTION_VIEW" "$FILE" || {
             echo "ERROR: ACTION_VIEW no encontrado."
             exit 1
           }
 
-          echo "--- redirect URI ---"
-          grep -n "johandrickvielma01-ux.github.io/tiktok/callback" "$FILE" \
-            || true
+          echo "--- callback URL ---"
+          grep -n "johandrickvielma01-ux.github.io/tiktok/callback" "$FILE" || true
 
-          echo "--- primeros 120 caracteres del archivo ---"
-          head -120 "$FILE"
+          echo "OK: código Kotlin encontrado."
 
       - name: Verify TikTok imports
         shell: bash
@@ -97,16 +94,15 @@ jobs:
 
           echo "Verificando AuthRequest..."
 
-          grep -q 'import com.tiktok.open.sdk.auth.AuthRequest' "$FILE" \
-            || {
-              echo "ERROR: AuthRequest incorrecto o faltante."
-              exit 1
-            }
+          grep -q 'import com.tiktok.open.sdk.auth.AuthRequest' "$FILE" || {
+            echo "ERROR: AuthRequest incorrecto o faltante."
+            exit 1
+          }
 
           echo "OK: AuthRequest correcto."
 
           if grep -q 'import com.tiktok.open.sdk.auth.model.AuthRequest' "$FILE"; then
-            echo "ERROR: todavía existe el import antiguo auth.model.AuthRequest"
+            echo "ERROR: todavía existe auth.model.AuthRequest"
             exit 1
           fi
 
@@ -133,25 +129,22 @@ jobs:
 
           FILE="stickergo/android/plugin/plugin/src/main/java/com/stickergo/tiktok/StickerGoTikTokPlugin.kt"
 
-          echo "Buscando procesamiento del callback..."
+          echo "Verificando procesamiento del callback..."
 
-          grep -q 'Intent.ACTION_VIEW' "$FILE" \
-            || {
-              echo "ERROR: no se encontró Intent.ACTION_VIEW."
-              exit 1
-            }
+          grep -q 'Intent.ACTION_VIEW' "$FILE" || {
+            echo "ERROR: Intent.ACTION_VIEW no encontrado."
+            exit 1
+          }
 
-          grep -q 'getAuthResponseFromIntent' "$FILE" \
-            || {
-              echo "ERROR: no se encontró getAuthResponseFromIntent."
-              exit 1
-            }
+          grep -q 'getAuthResponseFromIntent' "$FILE" || {
+            echo "ERROR: getAuthResponseFromIntent no encontrado."
+            exit 1
+          }
 
-          grep -q 'onMainResume' "$FILE" \
-            || {
-              echo "ERROR: no se encontró onMainResume."
-              exit 1
-            }
+          grep -q 'onMainResume' "$FILE" || {
+            echo "ERROR: onMainResume no encontrado."
+            exit 1
+          }
 
           echo "OK: callback preparado."
 
@@ -176,17 +169,15 @@ jobs:
           echo "VERIFICANDO ANDROIDX"
           echo "================================"
 
-          grep -q 'android.useAndroidX=true' gradle.properties \
-            || {
-              echo "ERROR: android.useAndroidX=true no encontrado."
-              exit 1
-            }
+          grep -q 'android.useAndroidX=true' gradle.properties || {
+            echo "ERROR: android.useAndroidX=true no encontrado."
+            exit 1
+          }
 
-          grep -q 'android.enableJetifier=true' gradle.properties \
-            || {
-              echo "ERROR: android.enableJetifier=true no encontrado."
-              exit 1
-            }
+          grep -q 'android.enableJetifier=true' gradle.properties || {
+            echo "ERROR: android.enableJetifier=true no encontrado."
+            exit 1
+          }
 
           echo "AndroidX OK."
 
@@ -217,7 +208,7 @@ jobs:
           DEBUG="stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-debug.aar"
 
           echo "================================"
-          echo "VERIFICANDO AAR"
+          echo "VERIFICANDO AAR GENERADOS"
           echo "================================"
 
           if [ ! -f "$RELEASE" ]; then
@@ -230,11 +221,13 @@ jobs:
             exit 1
           fi
 
-          echo "Release AAR:"
+          echo "Release:"
           ls -lh "$RELEASE"
 
-          echo "Debug AAR:"
+          echo "Debug:"
           ls -lh "$DEBUG"
+
+          echo "AARs generados correctamente."
 
       - name: Copy fresh AARs into Godot project
         shell: bash
@@ -264,18 +257,50 @@ jobs:
         run: |
           set -e
 
-          RELEASE="stickergo/addons/StickerGoTikTok/bin/release/StickerGoTikTok-release.aar"
+          RELEASE="stickergo/android/plugin/plugin/build/outputs/aar/StickerGoTikTok-release.aar"
 
-          echo "Buscando clases del plugin..."
+          echo "================================"
+          echo "VERIFICANDO CLASES DEL PLUGIN"
+          echo "================================"
 
-          unzip -l "$RELEASE" | grep \
-            'StickerGoTikTokPlugin.class' \
-            || {
-              echo "ERROR: StickerGoTikTokPlugin.class no está dentro del AAR."
-              exit 1
-            }
+          if [ ! -f "$RELEASE" ]; then
+            echo "ERROR: Release AAR no encontrado."
+            exit 1
+          fi
 
-          echo "OK: plugin encontrado dentro del AAR."
+          echo "Extrayendo classes.jar..."
+
+          rm -rf /tmp/stickergo_aar_check
+          mkdir -p /tmp/stickergo_aar_check
+
+          unzip -oq "$RELEASE" \
+            "classes.jar" \
+            -d /tmp/stickergo_aar_check
+
+          if [ ! -f "/tmp/stickergo_aar_check/classes.jar" ]; then
+            echo "ERROR: classes.jar no encontrado dentro del AAR."
+            exit 1
+          fi
+
+          echo "classes.jar encontrado."
+
+          echo "Buscando StickerGoTikTokPlugin.class..."
+
+          if unzip -l "/tmp/stickergo_aar_check/classes.jar" \
+            | grep -q "StickerGoTikTokPlugin.class"; then
+
+            echo ""
+            echo "================================"
+            echo "🔥 PLUGIN ENCONTRADO 🔥"
+            echo "================================"
+
+          else
+            echo "ERROR: StickerGoTikTokPlugin.class no encontrado."
+            echo ""
+            echo "Contenido de classes.jar:"
+            unzip -l "/tmp/stickergo_aar_check/classes.jar"
+            exit 1
+          fi
 
       - name: Package ready-to-export project
         shell: bash
